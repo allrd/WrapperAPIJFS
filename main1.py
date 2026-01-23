@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 from vali import process_invoice, load_or_create_excel
 import os
+import base64
+import uuid
 
 app = Flask(__name__)
 
@@ -27,19 +29,29 @@ def process_invoice_api():
         return jsonify({"error": "Invalid username or password"}), 401
 
     # -------------------------
-    # 2️⃣ REQUEST BODY
+    # 2️⃣ REQUEST BODY (BASE64)
     # -------------------------
-    data = request.json
-    file_path = data.get("file_path") if data else None
+    data = request.get_json(silent=True)
+    base64_string = data.get("base64File") if data else None
 
-    if not file_path:
-        return jsonify({"error": "file_path is required"}), 400
+    if not base64_string:
+        return jsonify({"error": "base64File is required"}), 400
 
-    if not os.path.exists(file_path):
-        return jsonify({"error": "File not found"}), 404
+    try:
+        file_bytes = base64.b64decode(base64_string)
+    except Exception:
+        return jsonify({"error": "Invalid base64 data"}), 400
 
     # -------------------------
-    # 3️⃣ LOAD EXCEL + PROCESS
+    # 3️⃣ SAVE FILE TEMPORARILY
+    # -------------------------
+    file_path = f"/tmp/{uuid.uuid4()}.pdf"  # or .png / .jpg
+
+    with open(file_path, "wb") as f:
+        f.write(file_bytes)
+
+    # -------------------------
+    # 4️⃣ LOAD EXCEL + PROCESS
     # -------------------------
     df = load_or_create_excel()
     before_count = len(df)
@@ -52,7 +64,7 @@ def process_invoice_api():
     last_row = df.iloc[-1]
 
     # -------------------------
-    # 4️⃣ RESPONSE
+    # 5️⃣ RESPONSE
     # -------------------------
     return jsonify({
         "status": status,
